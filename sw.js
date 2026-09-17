@@ -1,6 +1,6 @@
 // Service Worker — کش آفلاین پوسته سایت (فقط وقتی روی هاست اجرا شود)
-const CACHE = 'jalali-weather-v9';
-const FILES = ['./', 'index.html', 'styles.css?v=9', 'app.js?v=9', 'manifest.json', 'icon.svg'];
+const CACHE = 'jalali-weather-v11';
+const FILES = ['./', 'index.html', 'styles.css?v=11', 'app.js?v=11', 'manifest.json', 'icon.svg'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()).catch(() => {}));
 });

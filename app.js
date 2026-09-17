@@ -292,32 +292,121 @@ function renderFavs(){
 }
 function saveFavs(){ try{localStorage.setItem('fav_cities_v1',JSON.stringify(favs));}catch(e){} }
 function setCity(c){
-  city={name:c.name,lat:+c.lat,lon:+c.lon}; forecast=null;
+  weatherRequest++;
+  weatherController?.abort();
+  weatherController=null; fetchingNow=false; weatherError=''; weatherCached=false;
+  city={name:c.name,lat:+c.lat,lon:+c.lon}; forecast=null; lastFetchAt=0;
+  climaMap=null; climaKey=null; climaLoading=false;
   renderChips();
   $('cityName').textContent=city.name+' 📍';
   updateHash();
-  renderCalendar(); renderDetail();
+  renderCalendar(); renderDetail(); renderFetchInfo();
   loadWeather(); loadClimate();
 }
 
 // ================= ۶) داده هواشناسی =================
-async function loadWeather(){
-  if(forecast){renderCalendar();renderDetail();return;}
-  $('nowBox').innerHTML='⏳ در حال دریافت داده هواشناسی...';
+const WX_CACHE_PREFIX='wx_v1_', WX_TTL=15*60*1000;
+let lastFetchAt=0, autoTimer=null, fetchingNow=false;
+let weatherController=null, weatherRequest=0, weatherError='', weatherCached=false;
+
+function wxCacheKey(){
+  return WX_CACHE_PREFIX+city.lat.toFixed(3)+','+city.lon.toFixed(3);
+}
+function validWeather(data){
+  const d=data?.daily, h=data?.hourly;
+  return !data?.error && Array.isArray(d?.time) && d.time.length>0 &&
+    ['weathercode','temperature_2m_max','temperature_2m_min'].every(k=>Array.isArray(d[k])&&d[k].length===d.time.length) &&
+    Array.isArray(h?.time) && ['weathercode','temperature_2m'].every(k=>Array.isArray(h[k])&&h[k].length===h.time.length);
+}
+function readWxCache(){
+  try{
+    const s=localStorage.getItem(wxCacheKey()); if(!s) return null;
+    const o=JSON.parse(s);
+    if(!validWeather(o?.data)||!Number.isFinite(o.at)||o.at>Date.now()||Date.now()-o.at>24*60*60*1000) return null;
+    return o;
+  }catch(e){ return null; }
+}
+function writeWxCache(){
+  if(!forecast) return;
+  try{ localStorage.setItem(wxCacheKey(),JSON.stringify({at:lastFetchAt||Date.now(),data:forecast})); }catch(e){}
+}
+function renderFetchInfo(){
+  const el=$('fetchInfo'); if(!el) return;
+  const button=$('refreshBtn');
+  if(button){
+    button.disabled=fetchingNow||!navigator.onLine;
+    button.setAttribute('aria-busy',String(fetchingNow));
+  }
+  const stale=weatherCached||weatherError||!navigator.onLine||Date.now()-lastFetchAt>=WX_TTL;
+  el.classList.toggle('stale',Boolean(stale));
+  const state=fetchingNow?'در حال دریافت داده هواشناسی':!navigator.onLine?'آفلاین':weatherError?'دریافت ناموفق':weatherCached?'نسخه ذخیره‌شده':stale?'نیازمند به‌روزرسانی':'دریافت موفق';
+  const received=lastFetchAt?new Date(lastFetchAt).toLocaleString('fa-IR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'هنوز دریافتی انجام نشده';
+  el.textContent=state+' — آخرین دریافت موفق: '+received+(forecast&&stale?' — داده قبلی؛ زنده نیست.':'');
+}
+async function loadWeather(force){
+  if(fetchingNow) return;
+  if(!force&&forecast){renderCalendar();renderDetail();return;}
+  if(!forecast){
+    const c=readWxCache();
+    if(c){ forecast=c.data; lastFetchAt=c.at; weatherCached=true; renderCalendar(); renderDetail(); renderFetchInfo(); }
+  }
+  if(!navigator.onLine){weatherError='offline';renderFetchInfo();renderCalendar();renderDetail();return;}
+  fetchingNow=true;
+  weatherError='';
+  renderFetchInfo();
+  if(!forecast) $('nowBox').innerHTML='<div class="skeleton now"></div>';
+  const token=++weatherRequest;
+  const ctrl=new AbortController();
+  if(weatherController) weatherController.abort();
+  weatherController=ctrl;
+  const timeout=setTimeout(()=>ctrl.abort(),15000);
   try{
     const url=`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}`+
       `&current=temperature_2m,relative_humidity_2m,weathercode,wind_speed_10m`+
       `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,sunrise,sunset,uv_index_max,wind_direction_10m_dominant,wind_gusts_10m_max`+
       `&hourly=temperature_2m,weathercode,precipitation_probability,relative_humidity_2m`+
       `&timezone=Asia%2FTehran&forecast_days=16&past_days=8`;
-    const r=await fetch(url); const j=await r.json();
-    if(j.error) throw new Error('api');
-    forecast=j;
+    const r=await fetch(url,{signal:ctrl.signal,cache:'no-store'});
+    if(!r.ok) throw new Error('http');
+    const j=await r.json();
+    if(token!==weatherRequest) return;
+    if(!validWeather(j)) throw new Error('api');
+    clearTimeout(timeout);
+    forecast=j; lastFetchAt=Date.now(); weatherError=''; weatherCached=false;
+    writeWxCache();
   }catch(e){
-    $('nowBox').innerHTML='⚠️ اتصال به سامانه هواشناسی برقرار نشد؛ تقویم و میانگین آماری همچنان نمایش داده می‌شود.';
-  }
+    clearTimeout(timeout);
+    if(token!==weatherRequest) return;
+    weatherError='fetch';
+    if(!forecast){
+      const c=readWxCache();
+      if(c){ forecast=c.data; lastFetchAt=c.at; weatherCached=true; }
+    }
+    if(!forecast) $('nowBox').innerHTML='⚠️ اتصال به سامانه هواشناسی برقرار نشد؛ تقویم و میانگین آماری همچنان نمایش داده می‌شود.';
+    else if(force) toast('به‌روزرسانی ناموفق؛ داده قبلی نمایش داده می‌شود');
+  }finally{ clearTimeout(timeout); }
+  if(token!==weatherRequest) return;
+  fetchingNow=false;
+  $('refreshBtn')?.removeAttribute('aria-busy');
+  $('refreshBtn')?.removeAttribute('disabled');
+  renderFetchInfo();
   renderCalendar(); renderDetail();
 }
+function startAutoRefresh(){
+  clearInterval(autoTimer);
+  autoTimer=setInterval(()=>{
+    if(document.hidden||!navigator.onLine||fetchingNow) return;
+    if(lastFetchAt&&Date.now()-lastFetchAt<WX_TTL) return;
+    loadWeather(true);
+  },60*1000);
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&navigator.onLine&&(!lastFetchAt||Date.now()-lastFetchAt>=WX_TTL)) loadWeather(true);
+});
+window.addEventListener('online',()=>{
+  updateOfflineBar();
+  if(!document.hidden) loadWeather(true);
+});
 function dailyIndex(g){
   if(!forecast||!forecast.daily) return -1;
   return forecast.daily.time.indexOf(gStr(g));
@@ -341,6 +430,7 @@ function forecastSlice(){
 // ---- میانگین آماری ۶ ساله (۲۰۱۹-۲۰۲۴) برای همه روزهای سال ----
 async function loadClimate(){
   const key=city.lat.toFixed(2)+','+city.lon.toFixed(2);
+  const requestCity=city;
   if(climaKey===key&&(climaMap||climaLoading)) return;
   climaKey=key; climaMap=null; climaLoading=true; renderCalendar();
   try{
@@ -352,7 +442,8 @@ async function loadClimate(){
       `&start_date=2019-01-01&end_date=2024-12-31`+
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=Asia%2FTehran`;
     const r=await fetch(url); const j=await r.json();
-    if(!j.daily) throw new Error('no daily');
+    if(city!==requestCity) return;
+    if(!r.ok||!j.daily) throw new Error('no daily');
     const acc={};
     j.daily.time.forEach((t,i)=>{
       const mx=j.daily.temperature_2m_max[i];
@@ -370,7 +461,7 @@ async function loadClimate(){
     }
     climaMap=map;
     try{localStorage.setItem('clima_'+key,JSON.stringify(map));}catch(e){}
-  }catch(e){ climaMap=null; }
+  }catch(e){ if(city!==requestCity) return; climaMap=null; }
   climaLoading=false; renderCalendar(); renderDetail();
 }
 function climaFor(g){
@@ -560,7 +651,7 @@ function renderDetail(){
     if(isToday&&cur){
       $('nowBox').innerHTML=`<div class="big-ico">${wmo(cur.weathercode)[1]}</div>
         <div><div class="big-temp">${faNum(Math.round(cur.temperature_2m))}°</div>
-        <div class="desc">${wmo(cur.weathercode)[0]} • هم‌اکنون در ${city.name} • رطوبت ${faNum(cur.relative_humidity_2m)}٪</div></div>`;
+        <div class="desc">${wmo(cur.weathercode)[0]} • آخرین وضعیت دریافتی در ${city.name} • رطوبت ${faNum(cur.relative_humidity_2m)}٪</div></div>`;
     } else {
       $('nowBox').innerHTML=`<div class="big-ico">${ico}</div>
         <div><div class="big-temp">${faNum(mx)}° / ${faNum(mn)}°</div>
@@ -614,8 +705,8 @@ function renderDetail(){
     $('climateBox').innerHTML=`${ico} طبق آمار هواشناسی ۶ سال گذشته، هوای <b>${city.name}</b> در <b>${faDate(j)}</b> معمولاً <b>${txt}</b> بوده است؛ میانگین بیشینه ~${faNum(c.mx)}° و کمینه ~${faNum(c.mn)}°، میانگین بارش ${faNum(c.pr)} میلی‌متر. ${c.pr>1?'☔ معمولاً بارش قابل توجه دارد.':c.pr>0.2?'🌦️ گاهی بارش خفیف دارد.':'☀️ معمولاً هوای خشکی است.'}`;
   } else {
     $('nowBox').innerHTML=`<div class="big-ico">📊</div>
-      <div><div class="big-temp" style="font-size:22px">در حال محاسبه آمار...</div>
-      <div class="desc">میانگین ۶ سال گذشته در حال دریافت است</div></div>`;
+      <div><div class="big-temp" style="font-size:22px">${climaLoading&&navigator.onLine?'در حال دریافت آمار...':'داده هواشناسی در دسترس نیست'}</div>
+      <div class="desc">${climaLoading&&navigator.onLine?'میانگین تاریخی در حال دریافت است':'تقویم فعال است؛ برای داده تازه دوباره تلاش کنید.'}</div></div>`;
     $('statsGrid').innerHTML=''; $('hourly').innerHTML='—';
     $('climateBox').innerHTML=`برای <b>${faDate(j)}</b> پیش‌بینی دقیق وجود ندارد.<br>⏳ آمار در حال بارگذاری است...<br><button class="load-btn" id="avgBtn">📊 تلاش مجدد / محاسبه تکی این روز</button><div id="avgRes" style="margin-top:8px"></div>`;
     const b=$('avgBtn'); if(b) b.onclick=()=>loadSingleDayAvg(j);
@@ -755,6 +846,7 @@ $('icsBtn')?.addEventListener('click', ()=>{
   toast('⬇️ فایل تقویم دانلود شد');
 });
 $('printBtn')?.addEventListener('click', ()=>window.print());
+$('refreshBtn')?.addEventListener('click', ()=>{ loadWeather(true); toast('🔄 در حال به‌روزرسانی داده هواشناسی...'); });
 $('themeBtn')?.addEventListener('click', ()=>{
   const cur=document.documentElement.getAttribute('data-theme');
   const next=cur==='dark'?'light':'dark';
@@ -762,10 +854,17 @@ $('themeBtn')?.addEventListener('click', ()=>{
   else document.documentElement.removeAttribute('data-theme');
   try{ localStorage.setItem('theme_v1', next); }catch(e){}
   $('themeBtn').textContent=next==='dark'?'☀️':'🌙';
+  syncThemeColor();
   toast(next==='dark'?'🌙 تم تیره فعال شد':'☀️ تم روشن فعال شد');
 });
+function syncThemeColor(){
+  let m=document.querySelector('meta[name="theme-color"]');
+  if(!m){ m=document.createElement('meta'); m.name='theme-color'; document.head.appendChild(m); }
+  m.content=isDark()?'#0f172a':'#bae6fd';
+}
+syncThemeColor();
 (function syncThemeBtn(){ const b=$('themeBtn'); if(b) b.textContent=isDark()?'☀️':'🌙'; })();
-function updateOfflineBar(){ const el=$('offlineBar'); if(!el) return; el.classList.toggle('hidden', navigator.onLine); }
+function updateOfflineBar(){ const el=$('offlineBar'); if(el) el.classList.toggle('hidden', navigator.onLine); renderFetchInfo(); }
 window.addEventListener('online', updateOfflineBar); window.addEventListener('offline', updateOfflineBar); updateOfflineBar();
 
 // ================= ۱۰) جستجوی شهر =================
@@ -817,6 +916,8 @@ $('searchBtn').onclick=()=>{if($('cityInput').value.trim().length>=2) $('cityInp
   $('cityName').textContent=city.name+' 📍';
   renderCalendar(); renderDetail();
   loadWeather(); loadClimate();
+  startAutoRefresh();
+  setInterval(renderFetchInfo,60*1000);
   if('serviceWorker' in navigator&&/^https?:/.test(location.protocol)){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
