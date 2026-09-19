@@ -47,6 +47,46 @@ const FA_DIGITS='۰۱۲۳۴۵۶۷۸۹';
 const faNum=n=>String(n).replace(/[0-9]/g,d=>FA_DIGITS[d]);
 const faDate=j=>`${faNum(j.jd)} ${J_MONTHS[j.jm-1]} ${faNum(j.jy)}`;
 
+// تابع فرمت تاریخ قمری
+function formatHijri(hijri) {
+  if(!hijri) return 'نامشخص';
+  return `${faNum(hijri.d)} / ${faNum(hijri.m)} / ${faNum(hijri.y)}`;
+}
+
+// تبدیل قمری به میلادی
+function hijriToJulianDay(hy, hm, hd) {
+  return Math.floor((11 * hy + 3) / 30) +
+         Math.floor(354 * hy) +
+         Math.floor(30 * hm - (hm - 1) / 2) +
+         hd + 1948440 - 385;
+}
+
+function julianDayToGregorian(jd) {
+  const l = jd + 68569;
+  const n = Math.floor(4 * l / 146097);
+  const l2 = l - Math.floor((146097 * n + 3) / 4);
+  const i = Math.floor(4000 * (l2 + 1) / 1461001);
+  const l3 = l2 - Math.floor(1461 * i / 4) + 31;
+  const j = Math.floor(80 * l3 / 2447);
+  const gd = l3 - Math.floor(2447 * j / 80);
+  const l4 = Math.floor(j / 11);
+  const gm = j + 2 - 12 * l4;
+  const gy = 100 * (n - 49) + i + l4;
+  return {gy, gm, gd};
+}
+
+function hijriToGregorian(hy, hm, hd) {
+  const jd = hijriToJulianDay(hy, hm, hd);
+  return julianDayToGregorian(jd);
+}
+
+// validation تاریخ شمسی
+function isValidJalali(y, m, d) {
+  if(m < 1 || m > 12 || d < 1) return false;
+  const maxDay = jMonthLength(y, m);
+  return d <= maxDay;
+}
+
 // ================= ۲) وضعیت هوا =================
 const WMO_FA={
   0:['صاف و آفتابی','☀️'],1:['کم و بیش صاف','🌤️'],2:['نیمه‌ابری','⛅'],3:['ابری','☁️'],
@@ -900,6 +940,227 @@ $('cityInput').addEventListener('keydown',e=>{
 });
 $('cityInput').addEventListener('blur',()=>setTimeout(()=>{ $('suggestList').classList.add('hidden'); setSuggestExpanded(false); },180));
 $('searchBtn').onclick=()=>{if($('cityInput').value.trim().length>=2) $('cityInput').dispatchEvent(new Event('input')); };
+
+// ================= ساعت زنده =================
+let clockInterval;
+
+function updateLiveClock() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+
+  const el = $('liveClock');
+  if(el) {
+    el.innerHTML = `
+      <div class="clock-inner">
+        <span class="clock-time">${faNum(hours)}<span class="clock-separator">:</span>${faNum(minutes)}<span class="clock-separator">:</span>${faNum(seconds)}</span>
+        <span class="clock-icon">⏰</span>
+      </div>
+    `;
+  }
+}
+
+function startClock() {
+  if(clockInterval) clearInterval(clockInterval);
+  clockInterval = setInterval(updateLiveClock, 1000);
+  updateLiveClock();
+}
+
+// Stop clock when page hidden (memory optimization)
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && clockInterval) {
+    clearInterval(clockInterval);
+    clockInterval = null;
+  } else if(!document.hidden && !clockInterval) {
+    startClock();
+  }
+});
+
+startClock();
+
+// ================= تبدیل تاریخ =================
+// نام ماه‌ها برای هر تقویم
+const JALALI_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+const GREGORIAN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const HIJRI_MONTHS = ['محرم', 'صفر', 'ربیع‌الاول', 'ربیع‌الثانی', 'جمادی‌الاول', 'جمادی‌الثانی', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذی‌القعده', 'ذی‌الحجه'];
+
+// تغییر نوع تاریخ - به‌روزرسانی dropdown ماه
+$('dateType').addEventListener('change', function() {
+  const type = this.value;
+  const monthSelect = $('convMonth');
+
+  // پاک کردن options قبلی
+  monthSelect.innerHTML = '<option value="">ماه</option>';
+
+  let months = [];
+  if(type === 'jalali') months = JALALI_MONTHS;
+  else if(type === 'gregorian') months = GREGORIAN_MONTHS;
+  else if(type === 'hijri') months = HIJRI_MONTHS;
+
+  // اضافه کردن ماه‌های جدید
+  months.forEach((month, index) => {
+    const opt = document.createElement('option');
+    opt.value = index + 1;
+    opt.textContent = month;
+    monthSelect.appendChild(opt);
+  });
+
+  // ریست کردن روز
+  $('convDay').value = '';
+  $('convDay').setAttribute('max', 31);
+});
+
+// Validation و به‌روزرسانی max روز بر اساس ماه
+$('convMonth').addEventListener('change', function() {
+  const type = $('dateType').value;
+  const year = parseInt($('convYear').value) || 1403;
+  const month = parseInt(this.value);
+
+  if(!month) return;
+
+  let maxDay = 31;
+  if(type === 'jalali' && month) {
+    maxDay = jMonthLength(year, month);
+  } else if(type === 'gregorian' && month) {
+    maxDay = [31,29,31,30,31,30,31,31,30,31,30,31][month-1];
+  } else if(type === 'hijri') {
+    maxDay = [30,29,30,29,30,29,30,29,30,29,30,29][month-1];
+  }
+
+  $('convDay').setAttribute('max', maxDay);
+
+  // اگر روز فعلی بیشتر از max باشه، تنظیمش کن
+  const currentDay = parseInt($('convDay').value);
+  if(currentDay > maxDay) {
+    $('convDay').value = maxDay;
+  }
+});
+
+// جلوگیری از تایپ اعداد بیشتر از حد مجاز
+$('convDay').addEventListener('input', function(e) {
+  const maxDay = parseInt(this.getAttribute('max')) || 31;
+  let val = parseInt(this.value);
+
+  // اگر عدد وارد شده بیشتر از max باشه، فقط تا max نگه دار
+  if(val > maxDay) {
+    this.value = maxDay;
+  }
+
+  // اگر بیشتر از 2 رقم شد، کات کن
+  if(this.value.length > 2) {
+    this.value = this.value.slice(0, 2);
+  }
+});
+
+// جلوگیری از تایپ رقم سوم اگر عدد از max بیشتر میشه
+$('convDay').addEventListener('keypress', function(e) {
+  const maxDay = parseInt(this.getAttribute('max')) || 31;
+  const currentVal = this.value;
+  const newVal = currentVal + e.key;
+
+  // اگر فقط عدد نیست، اجازه نده
+  if(!/^\d$/.test(e.key)) {
+    e.preventDefault();
+    return;
+  }
+
+  // اگر 2 رقم شده، اجازه رقم سوم رو نده
+  if(currentVal.length >= 2) {
+    e.preventDefault();
+    return;
+  }
+
+  // اگر عدد جدید از max بیشتر میشه، اجازه نده
+  const potentialValue = parseInt(newVal);
+  if(potentialValue > maxDay) {
+    e.preventDefault();
+  }
+});
+
+// مقداردهی اولیه - بارگذاری ماه‌های شمسی
+$('dateType').dispatchEvent(new Event('change'));
+
+$('convertBtn').onclick = function() {
+  const type = $('dateType').value;
+  const year = parseInt($('convYear').value);
+  const month = parseInt($('convMonth').value);
+  const day = parseInt($('convDay').value);
+
+  if(!year || !month || !day || month < 1 || month > 12 || day < 1 || day > 31) {
+    $('convertResult').innerHTML = '<div style="color:var(--danger)">⚠️ لطفاً تاریخ معتبر وارد کنید</div>';
+    $('convertResult').classList.remove('hidden');
+    return;
+  }
+
+  // Validation اضافی برای شمسی
+  if(type === 'jalali' && !isValidJalali(year, month, day)) {
+    $('convertResult').innerHTML = '<div style="color:var(--danger)">⚠️ تاریخ شمسی نامعتبر است</div>';
+    $('convertResult').classList.remove('hidden');
+    return;
+  }
+
+  try {
+    let result = '';
+
+    if(type === 'jalali') {
+      // شمسی به میلادی و قمری
+      const g = toGregorian(year, month, day);
+      const hijri = islamicOf(g);
+      result = `
+        <div><span>📅 میلادی:</span> <strong>${faNum(g.gd)} / ${faNum(g.gm)} / ${faNum(g.gy)}</strong></div>
+        <div><span>🌙 قمری:</span> <strong>${hijri ? formatHijri(hijri) : 'نامشخص'}</strong></div>
+      `;
+    } else if(type === 'gregorian') {
+      // میلادی به شمسی و قمری
+      const j = toJalaali(year, month, day);
+      const hijri = islamicOf({gy: year, gm: month, gd: day});
+      result = `
+        <div><span>☀️ شمسی:</span> <strong>${faNum(j.jd)} ${J_MONTHS[j.jm-1]} ${faNum(j.jy)}</strong></div>
+        <div><span>🌙 قمری:</span> <strong>${hijri ? formatHijri(hijri) : 'نامشخص'}</strong></div>
+      `;
+    } else if(type === 'hijri') {
+      // قمری به شمسی و میلادی
+      const g = hijriToGregorian(year, month, day);
+      if(!g) {
+        result = '<div style="color:var(--danger)">❌ خطا در تبدیل تاریخ قمری</div>';
+      } else {
+        const j = toJalaali(g.gy, g.gm, g.gd);
+        result = `
+          <div><span>☀️ شمسی:</span> <strong>${faNum(j.jd)} ${J_MONTHS[j.jm-1]} ${faNum(j.jy)}</strong></div>
+          <div><span>📅 میلادی:</span> <strong>${faNum(g.gd)} / ${faNum(g.gm)} / ${faNum(g.gy)}</strong></div>
+        `;
+      }
+    }
+
+    $('convertResult').innerHTML = result;
+    $('convertResult').classList.remove('hidden');
+  } catch(e) {
+    $('convertResult').innerHTML = '<div style="color:var(--danger)">❌ خطا در تبدیل: ' + e.message + '</div>';
+    $('convertResult').classList.remove('hidden');
+  }
+};
+
+// ================= حمایت مالی =================
+$('supportBtn').onclick = function() {
+  $('supportModal').classList.remove('hidden');
+};
+$('closeModal').onclick = function() {
+  $('supportModal').classList.add('hidden');
+};
+$('supportModal').onclick = function(e) {
+  if(e.target === $('supportModal')) {
+    $('supportModal').classList.add('hidden');
+  }
+};
+$('copyCardBtn').onclick = function() {
+  const cardNumber = $('cardNumber').textContent;
+  navigator.clipboard.writeText(cardNumber.replace(/-/g, '')).then(() => {
+    toast('✅ شماره کارت کپی شد');
+  }).catch(() => {
+    toast('❌ خطا در کپی شماره کارت');
+  });
+};
 
 // ================= ۱۱) شروع =================
 (function init(){

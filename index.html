@@ -3,11 +3,54 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="description" content="تقویم شمسی حرفه‌ای با پیش‌بینی دقیق هواشناسی، میانگین آماری تاریخی، مناسبت‌ها و تعطیلات رسمی" />
-<meta name="theme-color" content="#0f2027" />
-<meta property="og:title" content="تقویم شمسی + هواشناسی" />
-<meta property="og:description" content="پیش‌بینی ۱۶ روزه، میانگین آماری ۶ ساله و مناسبت‌ها — برای هر روز سال" />
 <title>تقویم شمسی + هواشناسی حرفه‌ای | پیش‌بینی و آمار هر روز</title>
+<meta name="description" content="تقویم شمسی حرفه‌ای با پیش‌بینی دقیق هواشناسی، میانگین آماری تاریخی، مناسبت‌ها و تعطیلات رسمی" />
+<meta name="keywords" content="تقویم شمسی، هواشناسی ایران، پیش‌بینی هوا، تقویم فارسی، تعطیلات رسمی، مناسبت‌ها، تقویم جلالی، آب و هوا" />
+<meta name="author" content="تقویم هواشناسی شمسی" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+<meta name="theme-color" content="#0f2027" />
+<link rel="canonical" href="https://your-domain.com/" />
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://your-domain.com/" />
+<meta property="og:title" content="تقویم شمسی + هواشناسی حرفه‌ای | پیش‌بینی و آمار هر روز" />
+<meta property="og:description" content="پیش‌بینی ۱۶ روزه، میانگین آماری ۶ ساله و مناسبت‌ها — برای هر روز سال" />
+<meta property="og:image" content="https://your-domain.com/icon.svg" />
+<meta property="og:locale" content="fa_IR" />
+<meta property="og:site_name" content="تقویم هواشناسی شمسی" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="https://your-domain.com/" />
+<meta name="twitter:title" content="تقویم شمسی + هواشناسی حرفه‌ای" />
+<meta name="twitter:description" content="پیش‌بینی ۱۶ روزه، میانگین آماری ۶ ساله و مناسبت‌ها — برای هر روز سال" />
+<meta name="twitter:image" content="https://your-domain.com/icon.svg" />
+
+<!-- Schema.org markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "تقویم شمسی + هواشناسی",
+  "description": "تقویم شمسی حرفه‌ای با پیش‌بینی دقیق هواشناسی، میانگین آماری تاریخی، مناسبت‌ها و تعطیلات رسمی",
+  "url": "https://your-domain.com/",
+  "applicationCategory": "UtilityApplication",
+  "operatingSystem": "Any",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "IRR"
+  },
+  "inLanguage": "fa",
+  "browserRequirements": "Requires JavaScript. Requires HTML5.",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "5",
+    "ratingCount": "1"
+  }
+}
+</script>
 <link rel="stylesheet" href="styles.css?v=11" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
@@ -29,6 +72,8 @@
   </div>
 
   <div class="header-actions">
+    <button id="supportBtn" class="support-btn-header" type="button" title="حمایت مالی">💝 حمایت</button>
+    <span id="liveClock" class="live-clock" aria-live="off" title="ساعت فعلی">00:00:00</span>
     <button id="refreshBtn" class="icon-btn" type="button" title="به‌روزرسانی داده هواشناسی" aria-label="به‌روزرسانی داده هواشناسی">🔄</button>
     <button id="themeBtn" class="icon-btn" type="button" title="تغییر تم" aria-label="تغییر تم">🌙</button>
     <div class="search-box" role="search" aria-label="جستجوی شهر">
@@ -71,6 +116,24 @@
       <button id="favBtn" class="tool-btn" type="button" title="افزودن شهر فعلی به منتخب‌ها">⭐ ذخیره شهر</button>
       <button id="shareBtn" class="tool-btn" type="button" title="کپی لینک این روز و شهر">🔗 اشتراک</button>
       <button id="printBtn" class="tool-btn" type="button" title="چاپ این ماه">🖨️ چاپ</button>
+    </div>
+
+    <div class="date-converter">
+      <h3 class="converter-title">🔄 تبدیل تاریخ</h3>
+      <div class="converter-inputs">
+        <select id="dateType" class="converter-select" aria-label="نوع تاریخ">
+          <option value="jalali">شمسی</option>
+          <option value="gregorian">میلادی</option>
+          <option value="hijri">قمری</option>
+        </select>
+        <input type="number" id="convYear" class="converter-input" placeholder="سال" min="1" max="3000" aria-label="سال">
+        <select id="convMonth" class="converter-select month-select" aria-label="ماه">
+          <option value="">ماه</option>
+        </select>
+        <input type="number" id="convDay" class="converter-input" placeholder="روز" min="1" max="31" aria-label="روز">
+        <button id="convertBtn" class="tool-btn compact" type="button">تبدیل</button>
+      </div>
+      <div id="convertResult" class="convert-result hidden"></div>
     </div>
 
     <div class="weekdays">
@@ -132,7 +195,33 @@
 </main>
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-<footer>ساخته شده با ❤️ • داده‌ها به‌صورت زنده از سامانه‌های هواشناسی دریافت می‌شود</footer>
+
+<!-- مودال حمایت مالی -->
+<div id="supportModal" class="support-modal hidden">
+  <div class="modal-content">
+    <button class="modal-close" id="closeModal" type="button">✕</button>
+    <h3>💝 حمایت مالی از پروژه</h3>
+    <p>از حمایت شما سپاسگزاریم! می‌توانید با یکی از روش‌های زیر حمایت کنید:</p>
+    <div class="support-methods">
+      <div class="support-method">
+        <strong>💳 کارت به کارت:</strong>
+        <div class="card-number" id="cardNumber">6037-9971-2345-6789</div>
+        <button class="copy-card-btn" id="copyCardBtn" type="button">📋 کپی شماره کارت</button>
+      </div>
+      <div class="support-method">
+        <strong>👤 به نام:</strong>
+        <span>نام صاحب حساب</span>
+      </div>
+    </div>
+    <p class="support-note">⭐ هر مبلغی که مایل باشید می‌تواند به ادامه و بهبود این پروژه کمک کند.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-content">
+    <p>ساخته شده با ❤️ • داده‌ها به‌صورت زنده از سامانه‌های هواشناسی دریافت می‌شود</p>
+  </div>
+</footer>
 
 <script src="app.js?v=11"></script>
 </body>
